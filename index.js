@@ -24,7 +24,19 @@ async function run() {
     // Connect the client to the server	(optional starting in v4.7)
     // await client.connect();
 
+    const userCollection = client.db("ContestHubDB").collection("users");
     const contestCollection = client.db("ContestHubDB").collection("contests");
+
+    app.post("/users", async (req, res) => {
+      const user = req.body;
+      const query = { email: user.email };
+      const isExistingUser = await userCollection.findOne(query);
+      if (isExistingUser) {
+        return res.send({ message: "user already in exist", insertedId: null });
+      }
+      const result = await userCollection.insertOne(user);
+      res.send(result);
+    });
 
     app.get("/contests", async (req, res) => {
       const result = await contestCollection.find().toArray();
