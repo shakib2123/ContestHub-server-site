@@ -44,7 +44,16 @@ async function run() {
     });
 
     app.get("/contests", async (req, res) => {
-      const result = await contestCollection.find().toArray();
+      const query = {};
+      const category = req.query.category;
+
+      if (category) {
+        query.contestType = category;
+      }
+
+      console.log(query);
+
+      const result = await contestCollection.find(query).toArray();
       res.send(result);
     });
 
