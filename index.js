@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
+const jwt = require("jsonwebtoken");
 const port = process.env.PORT || 5000;
 const app = express();
 
@@ -26,6 +27,16 @@ async function run() {
 
     const userCollection = client.db("ContestHubDB").collection("users");
     const contestCollection = client.db("ContestHubDB").collection("contests");
+
+    // jwt related api
+    app.post("/jwt", async (req, res) => {
+      const user = req.body;
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
+        expiresIn: "100d",
+      });
+      res.send(token);
+    });
+
 
     app.post("/users", async (req, res) => {
       const user = req.body;
@@ -125,8 +136,8 @@ async function run() {
         $set: {
           status: updateInfo,
         },
-        };
-        console.log(updateInfo)
+      };
+      console.log(updateInfo);
       const result = await contestCollection.updateOne(
         filter,
         updatedDoc,
