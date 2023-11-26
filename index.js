@@ -7,7 +7,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.op9dmu8.mongodb.net/?retryWrites=true&w=majority`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -42,24 +42,109 @@ async function run() {
       const result = await userCollection.find().toArray();
       res.send(result);
     });
+    app.get("/users/:email", async (req, res) => {
+      const email = req.params.email;
+      const query = { email: email };
+      const result = await userCollection.findOne(query);
+      res.send(result);
+    });
+    app.put("/users/:email", async (req, res) => {
+      const email = req.params.email;
+      const role = req.body.role; // Assuming your role is directly in req.body
+      const filter = { email: email };
+      const options = { upsert: true };
+      const updatedDoc = {
+        $set: {
+          role: role, // Use $set to update the 'role' field
+        },
+      };
+
+      console.log(role, email);
+
+      const result = await userCollection.updateOne(
+        filter,
+        updatedDoc,
+        options
+      );
+      res.send(result);
+    });
 
     app.get("/contests", async (req, res) => {
       const query = {};
       const category = req.query.category;
-
+      const email = req.query.email;
       if (category) {
         query.contestType = category;
       }
-
-      console.log(query);
+      if (email) {
+        query.creatorEmail = email;
+      }
 
       const result = await contestCollection.find(query).toArray();
+      res.send(result);
+    });
+    app.get("/contests/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await contestCollection.findOne(query);
+      res.send(result);
+    });
+
+    app.put("/contests/:id", async (req, res) => {
+      const id = req.params.id;
+      const updatedContest = req.body;
+      const filter = { _id: new ObjectId(id) };
+      const options = { upsert: true };
+      const updatedDoc = {
+        $set: {
+          contestName: updatedContest.contestName,
+          image: updatedContest.image,
+          description: updatedContest.description,
+          price: updatedContest.price,
+          prize: updatedContest.prize,
+          instruction: updatedContest.instruction,
+          contestType: updatedContest.contestType,
+          deadline: updatedContest.deadline,
+        },
+      };
+      console.log(updatedContest);
+      const result = await contestCollection.updateOne(
+        filter,
+        updatedDoc,
+        options
+      );
+      res.send(result);
+    });
+
+    app.patch("/contests/:id", async (req, res) => {
+      const id = req.params.id;
+      const updateInfo = req.body.status;
+      const filter = { _id: new ObjectId(id) };
+      const options = { upsert: true };
+      const updatedDoc = {
+        $set: {
+          status: updateInfo,
+        },
+        };
+        console.log(updateInfo)
+      const result = await contestCollection.updateOne(
+        filter,
+        updatedDoc,
+        options
+      );
       res.send(result);
     });
 
     app.post("/contests", async (req, res) => {
       const data = req.body;
       const result = await contestCollection.insertOne(data);
+      res.send(result);
+    });
+
+    app.delete("/contests/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await contestCollection.deleteOne(query);
       res.send(result);
     });
 
