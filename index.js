@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
 const jwt = require("jsonwebtoken");
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 const port = process.env.PORT || 5000;
 const app = express();
 
@@ -27,6 +28,9 @@ async function run() {
 
     const userCollection = client.db("ContestHubDB").collection("users");
     const contestCollection = client.db("ContestHubDB").collection("contests");
+    const registrationCollection = client
+      .db("ContestHubDB")
+      .collection("registrations");
 
     // jwt related api
     app.post("/jwt", async (req, res) => {
@@ -36,7 +40,6 @@ async function run() {
       });
       res.send(token);
     });
-
 
     app.post("/users", async (req, res) => {
       const user = req.body;
@@ -84,11 +87,15 @@ async function run() {
       const query = {};
       const category = req.query.category;
       const email = req.query.email;
+      const verification = req.query.status;
       if (category) {
         query.contestType = category;
       }
       if (email) {
         query.creatorEmail = email;
+      }
+      if (verification) {
+        query.status = verification;
       }
 
       const result = await contestCollection.find(query).toArray();
@@ -156,6 +163,27 @@ async function run() {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await contestCollection.deleteOne(query);
+      res.send(result);
+    });
+
+    app.post("/create-payment-intent", async (req, res) => {
+      const { price } = req.body;
+      const amount = parseInt(price * 100);
+
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amount,
+        currency: "usd",
+        payment_method_types: ["card"],
+      });
+
+      res.send({
+        clientSecret: paymentIntent.client_secret,
+      });
+    });
+
+    app.post("/registrations", async (req, res) => {
+      const registerData = req.body;
+      const result = await registrationCollection.insertOne(registerData);
       res.send(result);
     });
 
