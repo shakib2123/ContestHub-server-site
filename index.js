@@ -134,6 +134,26 @@ async function run() {
       res.send(result);
     });
 
+    app.put("/contests/winner/:id", async (req, res) => {
+      const id = req.params.id;
+      const winnerData = req.body;
+      const filter = { _id: new ObjectId(id) };
+      const options = { upsert: true };
+      const updatedDoc = {
+        $set: {
+          winnerName: winnerData.winnerName,
+          winnerEmail: winnerData.winnerEmail,
+          winnerImage: winnerData.winnerImage,
+        },
+      };
+      const result = await contestCollection.updateOne(
+        filter,
+        updatedDoc,
+        options
+      );
+      res.send(result);
+    });
+
     app.patch("/contests/:id", async (req, res) => {
       const id = req.params.id;
       const updateInfo = req.body.status;
@@ -181,9 +201,33 @@ async function run() {
       });
     });
 
+    app.get("/registrations/:email", async (req, res) => {
+      const email = req.params.email;
+      const query = { email: email };
+      const result = await registrationCollection.find(query).toArray();
+      res.send(result);
+    });
+
     app.post("/registrations", async (req, res) => {
       const registerData = req.body;
       const result = await registrationCollection.insertOne(registerData);
+      res.send(result);
+    });
+    app.put("/registrations/:id", async (req, res) => {
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) };
+      const { winner } = req.body;
+      const options = { upsert: true };
+      const updatedDoc = {
+        $set: {
+          status: winner,
+        },
+      };
+      const result = await registrationCollection.updateOne(
+        filter,
+        updatedDoc,
+        options
+      );
       res.send(result);
     });
 
