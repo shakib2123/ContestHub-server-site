@@ -125,7 +125,25 @@ async function run() {
           deadline: updatedContest.deadline,
         },
       };
-      console.log(updatedContest);
+      console.log(updatedContest.attendance);
+      const result = await contestCollection.updateOne(
+        filter,
+        updatedDoc,
+        options
+      );
+      res.send(result);
+    });
+    app.put("/contests/attendance/:id", async (req, res) => {
+      const id = req.params.id;
+      const updatedAttendance = req.body;
+      const filter = { _id: new ObjectId(id) };
+      const options = { upsert: true };
+      const updatedDoc = {
+        $set: {
+          attendance: updatedAttendance.attendance,
+        },
+      };
+      console.log(updatedAttendance.attendance);
       const result = await contestCollection.updateOne(
         filter,
         updatedDoc,
@@ -146,6 +164,7 @@ async function run() {
           winnerImage: winnerData.winnerImage,
         },
       };
+      console.log(winnerData.winnerName, winnerData.winnerEmail);
       const result = await contestCollection.updateOne(
         filter,
         updatedDoc,
@@ -203,7 +222,7 @@ async function run() {
 
     app.get("/registrations/:email", async (req, res) => {
       const email = req.params.email;
-      const query = { email: email };
+      const query = { creatorEmail: email };
       const result = await registrationCollection.find(query).toArray();
       res.send(result);
     });
@@ -228,6 +247,13 @@ async function run() {
         updatedDoc,
         options
       );
+      res.send(result);
+    });
+
+    app.get("/winners/advertise", async (req, res) => {
+      const result = await contestCollection
+        .find({ winnerName: { $exists: true } })
+        .toArray();
       res.send(result);
     });
 
