@@ -62,11 +62,11 @@ async function run() {
       const query = { email: email };
       const user = await userCollection.findOne(query);
       const isAdmin = user?.role === "admin";
-      console.log(isAdmin, user, email);
+
       if (!isAdmin) {
         return res.status(403).send({ message: "forbidden access" });
       }
-      //   next();
+        next();
     };
 
     app.post("/users", async (req, res) => {
@@ -101,8 +101,6 @@ async function run() {
         },
       };
 
-      console.log(role, email);
-
       const result = await userCollection.updateOne(
         filter,
         updatedDoc,
@@ -113,9 +111,11 @@ async function run() {
 
     app.get("/contests", async (req, res) => {
       let query = {};
+      let sort = {};
       const category = req.query.category;
       const email = req.query.email;
       const verification = req.query.status;
+      const sortOrder = req.query.sortOrder;
       if (category) {
         query.contestType = category;
       }
@@ -125,8 +125,11 @@ async function run() {
       if (verification) {
         query.status = verification;
       }
+      if (sortOrder) {
+        sort.attendance = sortOrder;
+      }
 
-      const result = await contestCollection.find(query).toArray();
+      const result = await contestCollection.find(query).sort(sort).toArray();
       res.send(result);
     });
 
@@ -136,13 +139,15 @@ async function run() {
       const attendance = req.query.attendance;
       const order = req.query.order;
       const searchValue = req.query.searchValue;
-      console.log( searchValue);
       if (attendance && order) {
         sort.attendance = order;
       }
 
-      if ( searchValue) {
-         query.contestType = { $regex: new RegExp(searchValue, "i") };
+      if (searchValue) {
+        const keywords = searchValue.split(/\s+/).filter(Boolean);
+        query.contestType = {
+          $in: keywords.map((keyword) => new RegExp(keyword, "i")),
+        };
       }
       const result = await contestCollection
         .find(query)
@@ -234,7 +239,6 @@ async function run() {
           status: updateInfo,
         },
       };
-      console.log(updateInfo);
       const result = await contestCollection.updateOne(
         filter,
         updatedDoc,
@@ -320,7 +324,6 @@ async function run() {
 
     app.get("/payments/:email", async (req, res) => {
       const email = req.params.email;
-      console.log(email);
       const query = { email: email };
       const result = await registrationCollection.find(query).sort().toArray();
       res.send(result);
