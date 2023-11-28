@@ -66,7 +66,7 @@ async function run() {
       if (!isAdmin) {
         return res.status(403).send({ message: "forbidden access" });
       }
-        next();
+      next();
     };
 
     app.post("/users", async (req, res) => {
@@ -116,6 +116,8 @@ async function run() {
       const email = req.query.email;
       const verification = req.query.status;
       const sortOrder = req.query.sortOrder;
+      const page = Number(req.query.page) - 1;
+      const limit = Number(req.query.limit);
       if (category) {
         query.contestType = category;
       }
@@ -129,8 +131,16 @@ async function run() {
         sort.attendance = sortOrder;
       }
 
-      const result = await contestCollection.find(query).sort(sort).toArray();
-      res.send(result);
+      const contestCount = await contestCollection.countDocuments({
+        status: "Accepted",
+      });
+
+      const allContest = await contestCollection
+        .find(query)
+        .skip(page * limit)
+        .sort(sort)
+        .toArray();
+      res.send({ allContest, contestCount });
     });
 
     app.get("/contests/popular", async (req, res) => {
