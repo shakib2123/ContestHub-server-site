@@ -32,7 +32,6 @@ async function run() {
       .db("ContestHubDB")
       .collection("registrations");
 
-    // jwt related api
     app.post("/jwt", async (req, res) => {
       const user = req.body;
       const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
@@ -40,6 +39,35 @@ async function run() {
       });
       res.send(token);
     });
+
+    // middlewares
+    const verifyToken = (req, res, next) => {
+      console.log("inside verify token", req.headers.authorization);
+      if (!req.headers.authorization) {
+        return res.status(401).send({ message: "unauthorized access" });
+      }
+      const token = req.headers.authorization;
+      jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+        if (err) {
+          return res.status(401).send({ message: "unauthorized access" });
+        }
+        req.decoded = decoded;
+        next();
+      });
+    };
+
+    // use verify admin after verifyToken
+    const verifyAdmin = async (req, res, next) => {
+      const email = req.decoded.email;
+      const query = { email: email };
+      const user = await userCollection.findOne(query);
+      const isAdmin = user?.role === "admin";
+      console.log(isAdmin, user, email);
+      if (!isAdmin) {
+        return res.status(403).send({ message: "forbidden access" });
+      }
+      //   next();
+    };
 
     app.post("/users", async (req, res) => {
       const user = req.body;
@@ -52,7 +80,7 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/users", async (req, res) => {
+    app.get("/users", verifyToken, async (req, res) => {
       const result = await userCollection.find().toArray();
       res.send(result);
     });
@@ -64,12 +92,12 @@ async function run() {
     });
     app.put("/users/:email", async (req, res) => {
       const email = req.params.email;
-      const role = req.body.role; // Assuming your role is directly in req.body
+      const role = req.body.role;
       const filter = { email: email };
       const options = { upsert: true };
       const updatedDoc = {
         $set: {
-          role: role, // Use $set to update the 'role' field
+          role: role,
         },
       };
 
@@ -84,7 +112,7 @@ async function run() {
     });
 
     app.get("/contests", async (req, res) => {
-      const query = {};
+      let query = {};
       const category = req.query.category;
       const email = req.query.email;
       const verification = req.query.status;
@@ -101,6 +129,29 @@ async function run() {
       const result = await contestCollection.find(query).toArray();
       res.send(result);
     });
+
+    app.get("/contests/popular", async (req, res) => {
+      let query = {};
+      let sort = {};
+      const attendance = req.query.attendance;
+      const order = req.query.order;
+      const searchValue = req.query.searchValue;
+      console.log( searchValue);
+      if (attendance && order) {
+        sort.attendance = order;
+      }
+
+      if ( searchValue) {
+         query.contestType = { $regex: new RegExp(searchValue, "i") };
+      }
+      const result = await contestCollection
+        .find(query)
+        .sort(sort)
+        .limit(6)
+        .toArray();
+      res.send(result);
+    });
+
     app.get("/contests/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
@@ -125,7 +176,7 @@ async function run() {
           deadline: updatedContest.deadline,
         },
       };
-      console.log(updatedContest.attendance);
+
       const result = await contestCollection.updateOne(
         filter,
         updatedDoc,
@@ -143,7 +194,7 @@ async function run() {
           attendance: updatedAttendance.attendance,
         },
       };
-      console.log(updatedAttendance.attendance);
+
       const result = await contestCollection.updateOne(
         filter,
         updatedDoc,
@@ -164,7 +215,7 @@ async function run() {
           winnerImage: winnerData.winnerImage,
         },
       };
-      console.log(winnerData.winnerName, winnerData.winnerEmail);
+
       const result = await contestCollection.updateOne(
         filter,
         updatedDoc,
@@ -250,10 +301,28 @@ async function run() {
       res.send(result);
     });
 
+    app.get("/bestCreator", async (req, res) => {
+      const result = await contestCollection
+        .find()
+        .sort({ attendance: -1 })
+        .limit(3)
+        .toArray();
+      res.send(result);
+    });
+
     app.get("/winners/advertise", async (req, res) => {
       const result = await contestCollection
         .find({ winnerName: { $exists: true } })
+        .limit(6)
         .toArray();
+      res.send(result);
+    });
+
+    app.get("/payments/:email", async (req, res) => {
+      const email = req.params.email;
+      console.log(email);
+      const query = { email: email };
+      const result = await registrationCollection.find(query).sort().toArray();
       res.send(result);
     });
 
