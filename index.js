@@ -42,12 +42,12 @@ async function run() {
 
     // middlewares
     const verifyToken = (req, res, next) => {
-      console.log("inside verify token", req.headers.authorization);
-      if (!req.headers.authorization) {
+      console.log("inside verify token", req?.headers?.authorization);
+      if (!req?.headers?.authorization) {
         return res.status(401).send({ message: "unauthorized access" });
       }
       const token = req.headers.authorization;
-      jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+      jwt.verify(token, process?.env?.ACCESS_TOKEN_SECRET, (err, decoded) => {
         if (err) {
           return res.status(401).send({ message: "unauthorized access" });
         }
@@ -58,9 +58,10 @@ async function run() {
 
     // use verify admin after verifyToken
     const verifyAdmin = async (req, res, next) => {
-      const email = req.decoded.email;
+      const email = req?.decoded?.email;
       const query = { email: email };
       const user = await userCollection.findOne(query);
+      console.log(user, email);
       const isAdmin = user?.role === "admin";
 
       if (!isAdmin) {
@@ -84,13 +85,13 @@ async function run() {
       const result = await userCollection.find().toArray();
       res.send(result);
     });
-    app.get("/users/:email", async (req, res) => {
+    app.get("/users/:email", verifyToken, async (req, res) => {
       const email = req.params.email;
       const query = { email: email };
       const result = await userCollection.findOne(query);
       res.send(result);
     });
-    app.put("/users/:email", async (req, res) => {
+    app.put("/users/:email", verifyToken, async (req, res) => {
       const email = req.params.email;
       const role = req.body.role;
       const filter = { email: email };
@@ -174,7 +175,7 @@ async function run() {
       res.send(result);
     });
 
-    app.put("/contests/:id", async (req, res) => {
+    app.put("/contests/:id", verifyToken, async (req, res) => {
       const id = req.params.id;
       const updatedContest = req.body;
       const filter = { _id: new ObjectId(id) };
@@ -263,14 +264,14 @@ async function run() {
       res.send(result);
     });
 
-    app.delete("/contests/:id", async (req, res) => {
+    app.delete("/contests/:id", verifyToken, async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await contestCollection.deleteOne(query);
       res.send(result);
     });
 
-    app.post("/create-payment-intent", async (req, res) => {
+    app.post("/create-payment-intent", verifyToken, async (req, res) => {
       const { price } = req.body;
       const amount = parseInt(price * 100);
 
@@ -335,7 +336,7 @@ async function run() {
     app.get("/payments/:email", async (req, res) => {
       const email = req.params.email;
       const query = { email: email };
-      const result = await registrationCollection.find(query).sort().toArray();
+      const result = await registrationCollection.find(query).toArray();
       res.send(result);
     });
 
