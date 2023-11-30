@@ -1,5 +1,6 @@
 const express = require("express");
 const cors = require("cors");
+const mongoose = require("mongoose");
 require("dotenv").config();
 const jwt = require("jsonwebtoken");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
@@ -9,44 +10,88 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
-const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.op9dmu8.mongodb.net/?retryWrites=true&w=majority`;
+async function main() {
+  await mongoose.connect(
+    `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.op9dmu8.mongodb.net/?retryWrites=true&w=majority`,
+    { dbName: "ContestHubDB" }
+  );
+  const jwtSchema = new mongoose.Schema({
+    email: String,
+  });
+  const userSchema = new mongoose.Schema({
+    name: String,
+    email: String,
+    role: String,
+  });
+  const contestSchema = new mongoose.Schema({
+    contestName: String,
+    image: String,
+    description: String,
+    price: Number,
+    prize: Number,
+    instruction: String,
+    contestType: String,
+    deadline: String,
+    attendance: Number,
+    creatorName: String,
+    creatorImage: String,
+    creatorEmail: String,
+    status: String,
+    winnerEmail: String,
+    winnerImage: String,
+    winnerName: String,
+  });
 
-// Create a MongoClient with a MongoClientOptions object to set the Stable API version
-const client = new MongoClient(uri, {
-  serverApi: {
-    version: ServerApiVersion.v1,
-    strict: true,
-    deprecationErrors: true,
-  },
-});
+  const registrationSchema = new mongoose.Schema({
+    email: String,
+    name: String,
+    image: String,
+    price: Number,
+    contestName: String,
+    creatorEmail: String,
+    creatorName: String,
+    contestId: String,
+    transactionId: String,
+    contestImage: String,
+    deadline: String,
+    date: String,
+    status: String,
+    task: String,
+  });
 
-async function run() {
-  try {
-    // Connect the client to the server	(optional starting in v4.7)
-    // await client.connect();
+  const JWT = mongoose.model("JWT", jwtSchema, "jwtTokens");
+  const User = mongoose.model("User", userSchema, "users");
+  const Contest = mongoose.model("Contest", contestSchema, "contests");
+  const Registration = mongoose.model(
+    "Registration",
+    registrationSchema,
+    "registrations"
+  );
 
-    const userCollection = client.db("ContestHubDB").collection("users");
-    const contestCollection = client.db("ContestHubDB").collection("contests");
-    const registrationCollection = client
-      .db("ContestHubDB")
-      .collection("registrations");
-
-    app.post("/jwt", async (req, res) => {
-      const user = req.body;
-      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
-        expiresIn: "100d",
-      });
+  app.post("/jwt", async (req, res) => {
+    try {
+      const userData = req.body;
+      const user = new JWT(userData);
+      const token = jwt.sign(
+        { email: user.email },
+        process.env.ACCESS_TOKEN_SECRET,
+        {
+          expiresIn: "100d",
+        }
+      );
       res.send(token);
-    });
-
-    // middlewares
-    const verifyToken = (req, res, next) => {
+    } catch (error) {
+      console.error("Error generating JWT token:", error);
+      res.status(500).send({ message: "Internal Server Error" });
+    }
+  });
+  const verifyToken = async (req, res, next) => {
+    try {
       console.log("inside verify token", req?.headers?.authorization);
       if (!req?.headers?.authorization) {
         return res.status(401).send({ message: "unauthorized access" });
       }
-      const token = req.headers.authorization;
+      const token = req?.headers?.authorization;
       jwt.verify(token, process?.env?.ACCESS_TOKEN_SECRET, (err, decoded) => {
         if (err) {
           return res.status(401).send({ message: "unauthorized access" });
@@ -54,44 +99,70 @@ async function run() {
         req.decoded = decoded;
         next();
       });
-    };
+    } catch (error) {
+      console.error("Error verifying token:", error);
+      res.status(401).send({ message: "unauthorized access" });
+    }
+  };
 
-    // use verify admin after verifyToken
-    const verifyAdmin = async (req, res, next) => {
-      const email = req?.decoded?.email;
-      const query = { email: email };
-      const user = await userCollection.findOne(query);
-      console.log(user, email);
-      const isAdmin = user?.role === "admin";
+  const verifyAdmin = async (req, res, next) => {
+    try {
+      const email = await req?.decoded?.email;
+      const user = await User.findOne({ email });
 
-      if (!isAdmin) {
+      if (!user) {
+        return res.status(404).send({ message: "User not found" });
+      }
+      if (user.role !== "admin") {
         return res.status(403).send({ message: "forbidden access" });
       }
+      req.user = user;
       next();
-    };
+    } catch (error) {
+      console.error("Error verifying admin:", error);
+      res.status(500).send({ message: "Internal Server Error" });
+    }
+  };
 
-    app.post("/users", async (req, res) => {
-      const user = req.body;
-      const query = { email: user.email };
-      const isExistingUser = await userCollection.findOne(query);
-      if (isExistingUser) {
-        return res.send({ message: "user already in exist", insertedId: null });
-      }
-      const result = await userCollection.insertOne(user);
+  app.get("/users", verifyToken, async (req, res) => {
+    try {
+      const result = await User.find();
       res.send(result);
-    });
-
-    app.get("/users", verifyToken, async (req, res) => {
-      const result = await userCollection.find().toArray();
-      res.send(result);
-    });
-    app.get("/users/:email", verifyToken, async (req, res) => {
+    } catch (error) {
+      console.error("Error fetching users:", error);
+      res.status(500).send({ message: "Internal Server Error" });
+    }
+  });
+  app.get("/users/:email", async (req, res) => {
+    try {
       const email = req.params.email;
-      const query = { email: email };
-      const result = await userCollection.findOne(query);
+      const result = await User.findOne({ email: email });
       res.send(result);
-    });
-    app.put("/users/:email", verifyToken, async (req, res) => {
+    } catch (error) {
+      console.error("Error fetching user:", error);
+      res.status(500).send({ message: "Internal Server Error" });
+    }
+  });
+  app.post("/users", async (req, res) => {
+    try {
+      const userData = req.body;
+      const isExistingUser = await User.findOne({ email: userData.email });
+
+      if (isExistingUser) {
+        return res.send({ message: "User already exists", insertedId: null });
+      }
+      const newUser = new User(userData);
+
+      const result = await newUser.save();
+
+      res.send(result);
+    } catch (error) {
+      console.error("Error creating user:", error);
+      res.status(500).send({ message: "Internal Server Error" });
+    }
+  });
+  app.put("/users/:email", verifyToken, async (req, res) => {
+    try {
       const email = req.params.email;
       const role = req.body.role;
       const filter = { email: email };
@@ -101,16 +172,17 @@ async function run() {
           role: role,
         },
       };
+      const result = await User.updateOne(filter, updatedDoc, options);
 
-      const result = await userCollection.updateOne(
-        filter,
-        updatedDoc,
-        options
-      );
       res.send(result);
-    });
+    } catch (error) {
+      console.error("Error updating user role:", error);
+      res.status(500).send({ message: "Internal Server Error" });
+    }
+  });
 
-    app.get("/contests", async (req, res) => {
+  app.get("/contests", async (req, res) => {
+    try {
       let query = {};
       let sort = {};
       const category = req.query.category;
@@ -119,6 +191,7 @@ async function run() {
       const sortOrder = req.query.sortOrder;
       const page = Number(req.query.page) - 1;
       const limit = Number(req.query.limit);
+
       if (category) {
         query.contestType = category;
       }
@@ -132,24 +205,30 @@ async function run() {
         sort.attendance = sortOrder;
       }
 
-      const contestCount = await contestCollection.countDocuments({
+      const contestCount = await Contest.countDocuments({
         status: "Accepted",
       });
 
-      const allContest = await contestCollection
-        .find(query)
+      const allContest = await Contest.find(query)
         .skip(page * limit)
         .sort(sort)
-        .toArray();
-      res.send({ allContest, contestCount });
-    });
+        .limit(limit)
+        .exec();
 
-    app.get("/contests/popular", async (req, res) => {
+      res.send({ allContest, contestCount });
+    } catch (error) {
+      console.error("Error fetching contests:", error);
+      res.status(500).send({ message: "Internal Server Error" });
+    }
+  });
+  app.get("/contests/popular", async (req, res) => {
+    try {
       let query = {};
       let sort = {};
       const attendance = req.query.attendance;
       const order = req.query.order;
       const searchValue = req.query.searchValue;
+
       if (attendance && order) {
         sort.attendance = order;
       }
@@ -160,25 +239,37 @@ async function run() {
           $in: keywords.map((keyword) => new RegExp(keyword, "i")),
         };
       }
-      const result = await contestCollection
-        .find(query)
-        .sort(sort)
-        .limit(6)
-        .toArray();
-      res.send(result);
-    });
 
-    app.get("/contests/:id", async (req, res) => {
+      const result = await Contest.find(query).sort(sort).limit(6).exec();
+
+      res.send(result);
+    } catch (error) {
+      console.error("Error fetching popular contests:", error);
+      res.status(500).send({ message: "Internal Server Error" });
+    }
+  });
+
+  app.get("/contests/:id", async (req, res) => {
+    try {
       const id = req.params.id;
-      const query = { _id: new ObjectId(id) };
-      const result = await contestCollection.findOne(query);
-      res.send(result);
-    });
+      const result = await Contest.findById(id);
 
-    app.put("/contests/:id", verifyToken, async (req, res) => {
+      if (!result) {
+        return res.status(404).send({ message: "Contest not found" });
+      }
+
+      res.send(result);
+    } catch (error) {
+      console.error("Error fetching contest by ID:", error);
+      res.status(500).send({ message: "Internal Server Error" });
+    }
+  });
+
+  app.put("/contests/:id", verifyToken, async (req, res) => {
+    try {
       const id = req.params.id;
       const updatedContest = req.body;
-      const filter = { _id: new ObjectId(id) };
+      const filter = { _id: id };
       const options = { upsert: true };
       const updatedDoc = {
         $set: {
@@ -192,18 +283,19 @@ async function run() {
           deadline: updatedContest.deadline,
         },
       };
-
-      const result = await contestCollection.updateOne(
-        filter,
-        updatedDoc,
-        options
-      );
+      const result = await Contest.updateOne(filter, updatedDoc, options);
       res.send(result);
-    });
-    app.put("/contests/attendance/:id", async (req, res) => {
+    } catch (error) {
+      console.error("Error updating contest:", error);
+      res.status(500).send({ message: "Internal Server Error" });
+    }
+  });
+
+  app.put("/contests/attendance/:id", async (req, res) => {
+    try {
       const id = req.params.id;
       const updatedAttendance = req.body;
-      const filter = { _id: new ObjectId(id) };
+      const filter = { _id: id };
       const options = { upsert: true };
       const updatedDoc = {
         $set: {
@@ -211,18 +303,20 @@ async function run() {
         },
       };
 
-      const result = await contestCollection.updateOne(
-        filter,
-        updatedDoc,
-        options
-      );
-      res.send(result);
-    });
+      const result = await Contest.updateOne(filter, updatedDoc, options);
 
-    app.put("/contests/winner/:id", async (req, res) => {
+      res.send(result);
+    } catch (error) {
+      console.error("Error updating contest attendance:", error);
+      res.status(500).send({ message: "Internal Server Error" });
+    }
+  });
+
+  app.put("/contests/winner/:id", verifyToken, async (req, res) => {
+    try {
       const id = req.params.id;
       const winnerData = req.body;
-      const filter = { _id: new ObjectId(id) };
+      const filter = { _id: id };
       const options = { upsert: true };
       const updatedDoc = {
         $set: {
@@ -231,76 +325,103 @@ async function run() {
           winnerImage: winnerData.winnerImage,
         },
       };
-
-      const result = await contestCollection.updateOne(
-        filter,
-        updatedDoc,
-        options
-      );
+      const result = await Contest.updateOne(filter, updatedDoc, options);
       res.send(result);
-    });
+    } catch (error) {
+      console.error("Error updating contest winner:", error);
+      res.status(500).send({ message: "Internal Server Error" });
+    }
+  });
 
-    app.patch("/contests/:id", async (req, res) => {
+  app.patch("/contests/:id", verifyToken, async (req, res) => {
+    try {
       const id = req.params.id;
       const updateInfo = req.body.status;
-      const filter = { _id: new ObjectId(id) };
+      const filter = { _id: id };
       const options = { upsert: true };
       const updatedDoc = {
         $set: {
           status: updateInfo,
         },
       };
-      const result = await contestCollection.updateOne(
-        filter,
-        updatedDoc,
-        options
-      );
+      const result = await Contest.updateOne(filter, updatedDoc, options);
       res.send(result);
-    });
-
-    app.post("/contests", async (req, res) => {
+    } catch (error) {
+      console.error("Error updating contest status:", error);
+      res.status(500).send({ message: "Internal Server Error" });
+    }
+  });
+  app.post("/contests", verifyToken, async (req, res) => {
+    try {
       const data = req.body;
-      const result = await contestCollection.insertOne(data);
+      const newContest = new Contest(data);
+      const result = await newContest.save();
       res.send(result);
-    });
+    } catch (error) {
+      console.error("Error creating contest:", error);
+      res.status(500).send({ message: "Internal Server Error" });
+    }
+  });
 
-    app.delete("/contests/:id", verifyToken, async (req, res) => {
+  app.delete("/contests/:id", verifyToken, async (req, res) => {
+    try {
       const id = req.params.id;
-      const query = { _id: new ObjectId(id) };
-      const result = await contestCollection.deleteOne(query);
+      const result = await Contest.deleteOne({ _id: id });
       res.send(result);
-    });
+    } catch (error) {
+      console.error("Error deleting contest:", error);
+      res.status(500).send({ message: "Internal Server Error" });
+    }
+  });
 
-    app.post("/create-payment-intent", verifyToken, async (req, res) => {
+  app.post("/create-payment-intent", async (req, res) => {
+    try {
       const { price } = req.body;
       const amount = parseInt(price * 100);
-
       const paymentIntent = await stripe.paymentIntents.create({
         amount: amount,
         currency: "usd",
         payment_method_types: ["card"],
       });
-
       res.send({
         clientSecret: paymentIntent.client_secret,
       });
-    });
+    } catch (error) {
+      console.error("Error creating payment intent:", error);
+      res.status(500).send({ message: "Internal Server Error" });
+    }
+  });
 
-    app.get("/registrations/:email", async (req, res) => {
+  app.get("/registrations/:email", async (req, res) => {
+    try {
       const email = req.params.email;
       const query = { creatorEmail: email };
-      const result = await registrationCollection.find(query).toArray();
+      const result = await Registration.find(query).exec();
       res.send(result);
-    });
+    } catch (error) {
+      console.error("Error fetching registrations:", error);
+      res.status(500).send({ message: "Internal Server Error" });
+    }
+  });
 
-    app.post("/registrations", async (req, res) => {
+  app.post("/registrations", async (req, res) => {
+    try {
       const registerData = req.body;
-      const result = await registrationCollection.insertOne(registerData);
+      console.log(registerData);
+      const newRegistration = new Registration(registerData);
+      const result = await newRegistration.save();
+      console.log(result);
       res.send(result);
-    });
-    app.put("/registrations/:id", async (req, res) => {
+    } catch (error) {
+      console.error("Error creating registration:", error);
+      res.status(500).send({ message: "Internal Server Error" });
+    }
+  });
+
+  app.put("/registrations/:id", async (req, res) => {
+    try {
       const id = req.params.id;
-      const filter = { _id: new ObjectId(id) };
+      const filter = { _id: id };
       const { winner } = req.body;
       const options = { upsert: true };
       const updatedDoc = {
@@ -308,54 +429,57 @@ async function run() {
           status: winner,
         },
       };
-      const result = await registrationCollection.updateOne(
-        filter,
-        updatedDoc,
-        options
-      );
+      const result = await Registration.updateOne(filter, updatedDoc, options);
       res.send(result);
-    });
+    } catch (error) {
+      console.error("Error updating registration status:", error);
+      res.status(500).send({ message: "Internal Server Error" });
+    }
+  });
 
-    app.get("/bestCreator", async (req, res) => {
-      const result = await contestCollection
-        .find()
+  app.get("/bestCreator", async (req, res) => {
+    try {
+      const result = await Contest.find()
         .sort({ attendance: -1 })
         .limit(3)
-        .toArray();
-      res.send(result);
-    });
+        .exec();
 
-    app.get("/winners/advertise", async (req, res) => {
-      const result = await contestCollection
-        .find({ winnerName: { $exists: true } })
+      res.send(result);
+    } catch (error) {
+      console.error("Error fetching best creators:", error);
+      res.status(500).send({ message: "Internal Server Error" });
+    }
+  });
+
+  app.get("/winners/advertise", async (req, res) => {
+    try {
+      const result = await Contest.find({ winnerName: { $exists: true } })
         .limit(6)
-        .toArray();
+        .exec();
       res.send(result);
-    });
+    } catch (error) {
+      console.error("Error fetching winners for advertisement:", error);
+      res.status(500).send({ message: "Internal Server Error" });
+    }
+  });
 
-    app.get("/payments/:email", async (req, res) => {
+  app.get("/payments/:email", async (req, res) => {
+    try {
       const email = req.params.email;
       const query = { email: email };
-      const result = await registrationCollection.find(query).toArray();
+      const result = await Registration.find(query).exec();
       res.send(result);
-    });
+    } catch (error) {
+      console.error("Error fetching payments:", error);
+      res.status(500).send({ message: "Internal Server Error" });
+    }
+  });
 
-    // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
-    console.log(
-      "Pinged your deployment. You successfully connected to MongoDB!"
-    );
-  } finally {
-    // Ensures that the client will close when you finish/error
-    // await client.close();
-  }
+  app.listen(port, () => {
+    console.log(`Server is running on port: ${port}`);
+  });
 }
-run().catch(console.dir);
-
-app.use("/", async (req, res) => {
+main().catch((err) => console.log(err));
+app.get("/", (req, res) => {
   res.send("ContestHub is running here!");
-});
-
-app.listen(port, () => {
-  console.log(`server is running on port: ${port}`);
 });
